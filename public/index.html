@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jokebook</title>
+    <link rel="stylesheet" href="styles.css"> <!-- Link to external CSS file -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script> <!-- Include Axios -->
+</head>
+<body>
+
+    <h1>Welcome to Jokebook</h1>
+
+    <!-- Display a random joke -->
+    <h2>Random Joke:</h2>
+    <div id="random-joke">Loading...</div>
+
+    <!-- Display categories -->
+    <h3>Categories:</h3>
+    <div id="categories"></div>
+
+    <!-- Display jokes for the selected category -->
+    <div id="joke-list"></div>
+
+    <!-- Form to add a new joke -->
+    <h3>Add a New Joke:</h3>
+    <form id="new-joke-form">
+        <input type="text" id="category" placeholder="Category" required>
+        <input type="text" id="setup" placeholder="Setup" required>
+        <input type="text" id="delivery" placeholder="Delivery" required>
+        <button type="submit">Add Joke</button>
+    </form>
+
+    <script>
+        // Fetch random joke from the funnyJoke category
+        fetch('/jokebook/joke/funnyJoke')
+            .then(response => response.json())
+            .then(jokes => {
+                const randomJoke = jokes[Math.floor(Math.random() * jokes.length)];
+                document.getElementById('random-joke').innerText = `${randomJoke.setup} - ${randomJoke.delivery}`;
+            });
+
+        // Fetch and display categories
+        fetch('/jokebook/categories')
+            .then(response => response.json())
+            .then(categories => {
+                const categoriesDiv = document.getElementById('categories');
+                categories.forEach(category => {
+                    const categoryButton = document.createElement('button');
+                    categoryButton.innerText = category.name;
+                    categoryButton.onclick = () => getJokesByCategory(category.name);
+                    categoriesDiv.appendChild(categoryButton);
+                });
+            });
+
+        // Fetch jokes by category and display them
+        function getJokesByCategory(category) {
+            // First, check if the category exists locally
+            fetch(`/jokebook/joke/${category}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Category not found');
+                    }
+                    return response.json();
+                })
+                .then(jokes => {
+                    const jokeListDiv = document.getElementById('joke-list');
+                    jokeListDiv.innerHTML = ''; // Clear previous jokes
+
+                    if (jokes.length === 0) {
+                        jokeListDiv.innerHTML = 'No jokes available for this category yet!';
+                    } else {
+                        jokes.forEach(joke => {
+                            const jokeDiv = document.createElement('div');
+                            jokeDiv.innerText = `${joke.setup} - ${joke.delivery}`;
+                            jokeListDiv.appendChild(jokeDiv);
+                        });
+                    }
+                })
+                .catch(error => {
+                    // If category not found locally, search JokeAPI
+                    if (error.message === 'Category not found') {
+                        // Fetch jokes from JokeAPI
+                        axios.get(`https://v2.jokeapi.dev/joke/${category}?type=twopart&amount=3`)
+                            .then(response => {
+                                const jokeListDiv = document.getElementById('joke-list');
+                                jokeListDiv.innerHTML = ''; // Clear previous jokes
+
+                                if (response.data.jokes) {
+                                    response.data.jokes.forEach(joke => {
+                                        const jokeDiv = document.createElement('div');
+                                        jokeDiv.innerText = `${joke.setup} - ${joke.delivery}`;
+                                        jokeListDiv.appendChild(jokeDiv);
+
+                                        // Add the joke to the local database
+                                        addJokeToDatabase(category, joke.setup, joke.delivery);
+                                    });
+                                } else {
+                                    jokeListDiv.innerHTML = 'No jokes found.';
+                                }
+                            })
+                            .catch(() => {
+                                alert('Error fetching jokes from external API');
+                            });
+                    }
+                });
+        }
+
+        // Handle form submission to add a new joke
+        document.getElementById('new-joke-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const category = document.getElementById('category').value;
+            const setup = document.getElementById('setup').value;
+            const delivery = document.getElementById('delivery').value;
+
+            fetch('/jokebook/joke/new', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ category, setup, delivery })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('Joke added successfully!');
+                getJokesByCategory(category); // Refresh the jokes after adding a new one
+            });
+        });
+
+        // Function to add jokes from JokeAPI to the local database
+        function addJokeToDatabase(category, setup, delivery) {
+            fetch('/jokebook/joke/new', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    category: category,
+                    setup: setup,
+                    delivery: delivery
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Joke added to the database:', data);
+            })
+            .catch(error => {
+                console.error('Error adding joke to the database:', error);
+            });
+        }
+    </script>
+
+</body>
+</html>
